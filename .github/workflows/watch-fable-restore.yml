@@ -16,19 +16,40 @@ jobs:
         id: s
         run: |
           json=$(curl -sSf https://status.claude.com/api/v2/incidents.json)
-          # 이름 또는 업데이트 본문에 Fable/Mythos가 들어간 인시던트의 현재 status
-          status=$(echo "$json" | jq -r '
+          # 이름 또는 업데이트 본문에 Fable/Mythos가 들어간 인시던트 중
+          # 가장 최근 것의 status 와 (resolved_at 우선) 시각을 뽑는다.
+          read -r status when <<EOF
+          $(echo "$json" | jq -r '
             [ .incidents[]
               | select(
                   ((.name // "") | test("Fable|Mythos"; "i"))
                   or any((.incident_updates // [])[]; (.body // "") | test("Fable|Mythos|fable-mythos"; "i"))
-                ) ]
-            | (.[0].status // "")')
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "detected: '$status'"
+                )
+            ]
+            | sort_by(.updated_at) | reverse | .[0]
+            | if . == null then "none -"
+              else "\(.status) \(.resolved_at // .updated_at)" end')
+          EOF
 
-      - name: Notify if restored
-        if: steps.s.outputs.status == 'resolved' || steps.s.outputs.status == ''
+          echo "detected status: '$status', when: '$when'"
+
+          notify=false
+          if [ "$status" = "resolved" ] && [ "$when" != "-" ]; then
+            # 방금 풀린 경우만 알림 (cron 지연 대비 30분 윈도우)
+            when_epoch=$(date -d "$when" +%s 2>/dev/null || echo 0)
+            now=$(date -u +%s)
+            age=$(( now - when_epoch ))
+            echo "resolved age: ${age}s"
+            if [ "$when_epoch" -gt 0 ] && [ "$age" -ge 0 ] && [ "$age" -le 1800 ]; then
+              notify=true
+            fi
+          fi
+
+          echo "notify=$notify" >> "$GITHUB_OUTPUT"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Notify if just restored
+        if: steps.s.outputs.notify == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -36,5 +57,5 @@ jobs:
           if [ "$open" = "0" ]; then
             gh issue create \
               --title "Fable restored?" \
-              --body "status.claude.com의 Fable/Mythos 인시던트가 해제됨 (status: '${{ steps.s.outputs.status }}'). Claude Code에서 /model 확인."
+              --body "status.claude.com의 Fable/Mythos 인시던트가 방금 해제됨 (status: '${{ steps.s.outputs.status }}'). Claude Code에서 /model 확인."
           fi
