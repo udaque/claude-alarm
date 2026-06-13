@@ -1,0 +1,40 @@
+name: Watch Fable restore
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # 5분 간격 (GitHub 최소값, 지연될 수 있음)
+  workflow_dispatch:          # 수동 테스트용
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Claude status page
+        id: s
+        run: |
+          json=$(curl -sSf https://status.claude.com/api/v2/incidents.json)
+          # 이름 또는 업데이트 본문에 Fable/Mythos가 들어간 인시던트의 현재 status
+          status=$(echo "$json" | jq -r '
+            [ .incidents[]
+              | select(
+                  ((.name // "") | test("Fable|Mythos"; "i"))
+                  or any((.incident_updates // [])[]; (.body // "") | test("Fable|Mythos|fable-mythos"; "i"))
+                ) ]
+            | (.[0].status // "")')
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "detected: '$status'"
+
+      - name: Notify if restored
+        if: steps.s.outputs.status == 'resolved' || steps.s.outputs.status == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open=$(gh issue list --search 'Fable restored in:title state:open' --json number --jq 'length')
+          if [ "$open" = "0" ]; then
+            gh issue create \
+              --title "Fable restored?" \
+              --body "status.claude.com의 Fable/Mythos 인시던트가 해제됨 (status: '${{ steps.s.outputs.status }}'). Claude Code에서 /model 확인."
+          fi
