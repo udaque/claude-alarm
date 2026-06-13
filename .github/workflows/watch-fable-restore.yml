@@ -51,16 +51,39 @@ jobs:
           echo "notify=$notify" >> "$GITHUB_OUTPUT"
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
+      - name: Test push (수동 실행 시에만)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          NTFY_TOPIC: fable-watch-qkk7pbniofa4e7q
+        run: |
+          curl -sS \
+            -H "Title: 테스트 - Fable watcher" \
+            -H "Priority: high" \
+            -H "Tags: white_check_mark" \
+            -d "수동 실행 테스트 푸시. 폰에 뜨면 푸시 경로 정상입니다." \
+            "https://ntfy.sh/${NTFY_TOPIC}"
+
       - name: Notify if just restored
         if: steps.s.outputs.notify == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          # ntfy.sh 토픽 (앱에서 이 토픽을 구독하면 푸시가 옴). 추측 어려운 고유값.
+          NTFY_TOPIC: fable-watch-qkk7pbniofa4e7q
         run: |
           open=$(gh issue list --search 'Fable restored in:title state:open' --json number --jq 'length')
           if [ "$open" = "0" ]; then
-            # 본인에게 assign + 멘션해서 "participating" 알림(=모바일 푸시)이 확실히 가게 한다.
+            # 기록용 이슈 (본인에게 assign + 멘션)
             gh issue create \
               --title "Fable restored?" \
               --assignee "${{ github.repository_owner }}" \
               --body "@${{ github.repository_owner }} status.anthropic.com의 Fable/Mythos 인시던트가 방금 해제됨 (status: '${{ steps.s.outputs.status }}'). Claude Code에서 /model 확인."
+
+            # 휴대폰 푸시 (ntfy.sh)
+            curl -sS \
+              -H "Title: Fable restored?" \
+              -H "Priority: high" \
+              -H "Tags: tada" \
+              -H "Click: https://github.com/${{ github.repository }}/issues" \
+              -d "Fable/Mythos 인시던트 해제됨 (status: ${{ steps.s.outputs.status }}). Claude Code에서 /model 확인." \
+              "https://ntfy.sh/${NTFY_TOPIC}"
           fi
