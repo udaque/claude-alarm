@@ -15,7 +15,10 @@ jobs:
       - name: Query Claude status page
         id: s
         run: |
-          json=$(curl -sSf https://status.claude.com/api/v2/incidents.json)
+          # status.claude.com 은 Cloudflare 뒤에서 /api 경로를 막아 405를 낸다.
+          # Atlassian Statuspage 원본 호스트(status.anthropic.com)의 표준 API를 사용.
+          UA="Mozilla/5.0 (compatible; FableWatcher/1.0; +https://github.com/${GITHUB_REPOSITORY})"
+          json=$(curl -sSfL -A "$UA" https://status.anthropic.com/api/v2/incidents.json)
           # 이름 또는 업데이트 본문에 Fable/Mythos가 들어간 인시던트 중
           # 가장 최근 것의 status 와 (resolved_at 우선) 시각을 뽑는다.
           read -r status when <<EOF
