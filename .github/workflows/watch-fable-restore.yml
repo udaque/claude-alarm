@@ -58,7 +58,9 @@ jobs:
         run: |
           open=$(gh issue list --search 'Fable restored in:title state:open' --json number --jq 'length')
           if [ "$open" = "0" ]; then
+            # 본인에게 assign + 멘션해서 "participating" 알림(=모바일 푸시)이 확실히 가게 한다.
             gh issue create \
               --title "Fable restored?" \
-              --body "status.claude.com의 Fable/Mythos 인시던트가 방금 해제됨 (status: '${{ steps.s.outputs.status }}'). Claude Code에서 /model 확인."
+              --assignee "${{ github.repository_owner }}" \
+              --body "@${{ github.repository_owner }} status.anthropic.com의 Fable/Mythos 인시던트가 방금 해제됨 (status: '${{ steps.s.outputs.status }}'). Claude Code에서 /model 확인."
           fi
